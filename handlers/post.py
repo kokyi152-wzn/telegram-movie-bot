@@ -448,6 +448,19 @@ async def confirm_post(callback: CallbackQuery):
                 f"တင်ပြီးသားချန်နယ်: {ch_text}",
                 parse_mode="HTML",
             )
+            # Send a copy of the finished post to the admin
+            try:
+                admin_caption = format_post_caption(title, script_summary=script_text) if title else ""
+                admin_kb = post_action_kb(None, telegraph_url, deep_link, CHANNEL_URL, CHANNEL2_URL)
+                await _send_post_to_one_channel(
+                    callback.bot,
+                    callback.from_user.id,
+                    state["poster_file_ids"],
+                    admin_caption,
+                    admin_kb,
+                )
+            except Exception as e:
+                logging.warning("Failed to send post copy to admin: %s", e)
             # Dedicated private deep link message for the admin
             deeplink_kb = InlineKeyboardBuilder()
             deeplink_kb.button(text="🎬 ဇာတ်ကားရယူရန်", url=deep_link)
