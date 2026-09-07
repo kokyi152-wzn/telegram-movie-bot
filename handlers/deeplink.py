@@ -1,4 +1,5 @@
 import asyncio
+import html
 import logging
 
 from aiogram import Router, F
@@ -17,6 +18,35 @@ DELETION_TASKS = {}
 
 # Track pending requests waiting for channel subscription
 PENDING_REQUESTS = {}
+
+
+async def _send_media_file(message: Message, file_id: str, name: str, caption: str):
+    """Send a file, trying video first for video-like names, falling back to document."""
+    video_exts = (".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v")
+    video_first = name.lower().endswith(video_exts)
+    last_err = None
+
+    if video_first:
+        try:
+            return await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+        except Exception as e:
+            last_err = e
+            logging.warning("answer_video failed for %s -> trying document: %s", name, e)
+    else:
+        try:
+            return await message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
+        except Exception as e:
+            last_err = e
+            logging.warning("answer_document failed for %s -> trying video: %s", name, e)
+
+    if video_first:
+        return await message.answer_document(document=file_id, caption=caption, parse_mode="HTML")
+    try:
+        return await message.answer_video(video=file_id, caption=caption, parse_mode="HTML")
+    except Exception as e:
+        if last_err is not None:
+            raise last_err
+        raise e
 
 
 async def _is_subscribed(bot, user_id) -> bool:
@@ -153,23 +183,18 @@ async def _handle_movie_request(message: Message, post_id: str):
 
     # Send the movie file
     try:
-        if movie_file_name.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v")):
-            file_msg = await message.answer_video(
-                video=movie_file_id,
-                caption=f"🎬 <b>{title}</b>",
-                parse_mode="HTML",
-            )
-        else:
-            file_msg = await message.answer_document(
-                document=movie_file_id,
-                caption=f"🎬 <b>{title}</b>",
-                parse_mode="HTML",
-            )
+        file_msg = await _send_media_file(
+            message,
+            movie_file_id,
+            movie_file_name,
+            f"🎬 <b>{title}</b>",
+        )
         sent_ids.append(file_msg.message_id)
     except Exception as e:
         logging.exception("Failed to send movie file")
         await message.answer(
-            f"❌ Movie ဖိုင် ပို့ရန် မအောင်မြင်ပါ:\n{e}",
+            f"❌ Movie ဖိုင် ပို့ရန် မအောင်မြင်ပါ:\n{html.escape(str(e))}",
+            parse_mode="HTML",
         )
         try:
             await message.bot.delete_message(message.chat.id, warning_msg.message_id)
@@ -225,23 +250,21 @@ async def _handle_batch_request(message: Message, batch_id: str):
     for i, fid in enumerate(file_ids):
         try:
             name = file_names[i] if i < len(file_names) else "file"
-            if name.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v")):
-                msg = await message.answer_video(
-                    video=fid,
-                    caption=f"🎬 <b>{title}</b>\n📦 ဖိုင် {i+1}/{len(file_ids)}",
-                    parse_mode="HTML",
-                )
-            else:
-                msg = await message.answer_document(
-                    document=fid,
-                    caption=f"📦 <b>{title}</b>\n📄 ဖိုင် {i+1}/{len(file_ids)}",
-                    parse_mode="HTML",
-                )
+            msg = await _send_media_file(
+                message,
+                fid,
+                name,
+                f"📦 <b>{title}</b>\n📄 ဖိုင် {i+1}/{len(file_ids)}",
+            )
             sent_ids.append(msg.message_id)
         except Exception as e:
             logging.exception("Failed to send batch file %s", i)
             try:
-                await message.answer(f"❌ ဖိုင် {i+1} ပို့ရန် မအောင်မြင်ပါ")
+                await message.answer(
+                    f"❌ ဖိုင် {i+1} <b>{html.escape(name)}</b> ပို့ရန် မအောင်မြင်ပါ:\n"
+                    f"{html.escape(str(e))}",
+                    parse_mode="HTML",
+                )
             except Exception:
                 pass
 
