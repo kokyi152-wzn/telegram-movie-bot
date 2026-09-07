@@ -13,11 +13,26 @@ async def _build_and_send_post(bot: Bot, post_data):
     title = post_data.get("title", "Movie")
     poster_file_ids = post_data.get("poster_file_ids", [])
     telegraph_url = post_data.get("telegraph_url", "")
+    script_text = post_data.get("script_text", "")
+    movie_file_id = post_data.get("movie_file_id", "")
+    movie_file_name = post_data.get("movie_file_name", "movie.mp4")
 
     post_id = str(uuid.uuid4())[:8]
+
+    # Persist the post so its deep link works
+    await db.save_post(
+        post_id=post_id,
+        title=title,
+        script_text=script_text,
+        telegraph_url=telegraph_url,
+        poster_file_ids=poster_file_ids,
+        movie_file_id=movie_file_id,
+        movie_file_name=movie_file_name,
+    )
+
     deep_link = f"https://t.me/{bot.username}?start=movie_{post_id}"
 
-    caption = format_post_caption(title)
+    caption = format_post_caption(title, script_summary=script_text)
     kb = post_action_kb(None, telegraph_url, deep_link)
 
     from aiogram.types import InputMediaPhoto

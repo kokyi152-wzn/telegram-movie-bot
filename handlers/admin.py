@@ -22,6 +22,7 @@ STATE_BATCH_TITLE = "batch_title"
 STATE_DELETE_FILE = "delete_file"
 STATE_SCHEDULE_TIME = "schedule_time"
 STATE_SCHEDULE_DELETE = "schedule_delete"
+STATE_VIDEO_LINK = "video_link"
 
 
 @router.callback_query(F.data == "admin_stats")
@@ -88,6 +89,7 @@ async def resend_post(callback: CallbackQuery):
         post.get("poster_file_ids", []),
         post.get("telegraph_url", ""),
         deep_link,
+        post.get("script_text", ""),
     )
     await callback.answer("✅ ပြန်လွှင့်ပြီးပါပြီ!", show_alert=True)
 
@@ -205,7 +207,7 @@ async def batch_link(callback: CallbackQuery):
     await callback.answer("📦 Batch Link")
 
 
-@router.message(F.photo | F.document | F.video, lambda m: m.from_user and m.from_user.id in ADMIN_STATES)
+@router.message(F.photo | F.document | F.video, lambda m: m.from_user and ADMIN_STATES.get(m.from_user.id, {}).get("state") == STATE_BATCH_COLLECT)
 async def collect_batch_files(message: Message):
     state = ADMIN_STATES.get(message.from_user.id)
     if not state or state["state"] != STATE_BATCH_COLLECT:
@@ -234,7 +236,7 @@ async def collect_batch_files(message: Message):
     )
 
 
-@router.message(lambda m: m.from_user and m.from_user.id in ADMIN_STATES and m.text == "/done")
+@router.message(lambda m: m.from_user and ADMIN_STATES.get(m.from_user.id, {}).get("state") == STATE_BATCH_COLLECT and m.text == "/done")
 async def batch_done(message: Message):
     state = ADMIN_STATES.get(message.from_user.id)
     if not state or state["state"] != STATE_BATCH_COLLECT:
@@ -249,7 +251,7 @@ async def batch_done(message: Message):
     )
 
 
-@router.message(lambda m: m.from_user and m.from_user.id in ADMIN_STATES and m.text)
+@router.message(lambda m: m.from_user and ADMIN_STATES.get(m.from_user.id, {}).get("state") == STATE_BATCH_TITLE and m.text)
 async def batch_title_handler(message: Message):
     state = ADMIN_STATES.get(message.from_user.id)
     if not state:
@@ -267,10 +269,13 @@ async def batch_title_handler(message: Message):
     link_msg = f"✅ <b>Batch Link ရပြီ!</b>\n\n"
     link_msg += f"📦 <b>{html.escape(state['title'])}</b>\n"
     link_msg += f"📄 ဖိုင်: {len(state['file_ids'])} ခု\n\n"
-    link_msg += f"🔗 <b>Link:</b>\n<code>{deep_link}</code>"
+    link_kb = InlineKeyboardBuilder()
+    link_kb.button(text="🎬 ဖိုင်များရယူရန် Link", url=deep_link)
+    link_kb.button(text="🏠 Admin Menu", callback_data="admin_menu")
+    link_kb.adjust(1)
 
     ADMIN_STATES.pop(message.from_user.id, None)
-    await message.answer(link_msg, parse_mode="HTML", reply_markup=main_menu_kb())
+    await message.answer(link_msg, parse_mode="HTML", reply_markup=link_kb.as_markup())
 
 
 # ---------------- Schedule ----------------
@@ -333,7 +338,7 @@ async def sch_post(callback: CallbackQuery):
     await callback.answer()
 
 
-@router.message(lambda m: m.from_user and m.from_user.id in ADMIN_STATES and m.text and not m.text.startswith("/"))
+@router.message(lambda m: m.from_user and ADMIN_STATES.get(m.from_user.id, {}).get("state") == STATE_SCHEDULE_TIME and m.text and not m.text.startswith("/"))
 async def schedule_time_handler(message: Message):
     state = ADMIN_STATES.get(message.from_user.id)
     if not state or state["state"] != STATE_SCHEDULE_TIME:
@@ -362,7 +367,9 @@ async def schedule_time_handler(message: Message):
         "title": post["title"],
         "poster_file_ids": post.get("poster_file_ids", []),
         "telegraph_url": post.get("telegraph_url", ""),
+        "script_text": post.get("script_text", ""),
         "movie_file_id": post.get("movie_file_id", ""),
+        "movie_file_name": post.get("movie_file_name", "movie.mp4"),
     }
 
     await db.save_schedule(schedule_id, post["title"], post_data, utc_send_at)
@@ -481,3 +488,79 @@ async def maintenance_off(callback: CallbackQuery):
         reply_markup=main_menu_kb(),
     )
     await callback.answer("🔧 Maintenance OFF")
+
+
+# ---------------- Video -> Deep Link ----------------
+
+@router.callback_query(F.data == "video_deeplink")
+async def video_deeplink_prompt(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Admin only!", show_alert=True)
+        return
+    state = {
+        "admin_id": callback.from_user.id,
+        "state": STATE_VIDEO_LINK,
+        "file_ids": [],
+        "title": None,
+        "is_batch": False,
+    }
+    ADMIN_STATES[callback.from_user.id] = state
+    await callback.message.answer(
+        "🎬 <b>Video → Deep Link</b>\n\n"
+        "ဇာတ်ကားဖိုင် (သို့) ဗီဒီယိုကို ပို့ပါ။\n"
+        "ရပြီဆိုရင် deep link ထုတ်ပေးပါမယ်။\n\n"
+        "ပယ်ဖျက်ရန်: <b>/cancel</b>",
+        parse_mode="HTML",
+    )
+    await callback.answer("🎬 Video → Deep Link")
+
+
+@router.message(F.video | F.document, lambda m: m.from_user and ADMIN_STATES.get(m.from_user.id, {}).get("state") == STATE_VIDEO_LINK)
+async def video_deeplink_collect(message: Message):
+    state = ADMIN_STATES.get(message.from_user.id)
+    if not state or state["state"] != STATE_VIDEO_LINK:
+        return
+
+    file_id = None
+    file_name = ""
+    if message.video:
+        file_id = message.video.file_id
+        file_name = getattr(message.video, "file_name", None) or "video.mp4"
+    elif message.document:
+        file_id = message.document.file_id
+        file_name = message.document.file_name or "document"
+
+    if not file_id:
+        return
+
+    is_movie_ext = file_name.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".3gp", ".mpeg"))
+
+    # If it's a single video/movie -> generate deeplink immediately
+    if not state.get("is_batch"):
+        # store as a one-file batch for deeplink reuse
+        post_id = str(uuid.uuid4())[:8]
+        await db.save_batch(
+            post_id,
+            file_name,
+            [file_id],
+            [file_name],
+        )
+        deep_link = f"https://t.me/{message.bot.username}?start=batch_{post_id}"
+        ADMIN_STATES.pop(message.from_user.id, None)
+        link_kb = InlineKeyboardBuilder()
+        link_kb.button(text="🎬 ဖိုင်ရယူရန် Link", url=deep_link)
+        link_kb.button(text="🏠 Admin Menu", callback_data="admin_menu")
+        link_kb.adjust(1)
+        await message.answer(
+            f"✅ <b>Deep Link ရပြီ!</b>\n\n"
+            f"🎬 <b>{html.escape(file_name)}</b>\n\n"
+            f"👉 ဒီ link ကို တခြားနေရာမှာ တွဲသုံးပါ။\n"
+            f"နှိပ်လိုက်တာနဲ့ user ဆီ bot က ဖိုင်ပို့ပေးမယ်။",
+            parse_mode="HTML",
+            reply_markup=link_kb.as_markup(),
+        )
+        return
+
+    # batch collection path (shouldn't normally reach here for video_deeplink)
+    state["file_ids"].append(file_id)
+    await message.answer(f"✅ ဖိုင် {len(state['file_ids'])} ခု ရပြီ။ /done ရိုက်ပါ")

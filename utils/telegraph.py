@@ -1,12 +1,18 @@
+import json
 import aiohttp
 from config import TELEGRAPH_TOKEN
 
 API_URL = "https://api.telegra.ph"
 
+AUTHOR_NAME = "WZN Cinema Hub Movies"
 
-async def create_page(title, content, author_name="Movie Bot", author_url=""):
+
+async def create_page(title, content, author_name=AUTHOR_NAME, author_url=""):
     if not TELEGRAPH_TOKEN:
         return None
+
+    if not isinstance(content, str):
+        content = json.dumps(content, ensure_ascii=False)
 
     async with aiohttp.ClientSession() as session:
         data = aiohttp.FormData()
@@ -25,9 +31,12 @@ async def create_page(title, content, author_name="Movie Bot", author_url=""):
             return None
 
 
-async def edit_page(path, title, content, author_name="Movie Bot"):
+async def edit_page(path, title, content, author_name=AUTHOR_NAME):
     if not TELEGRAPH_TOKEN:
         return None
+
+    if not isinstance(content, str):
+        content = json.dumps(content, ensure_ascii=False)
 
     async with aiohttp.ClientSession() as session:
         data = aiohttp.FormData()
@@ -44,7 +53,7 @@ async def edit_page(path, title, content, author_name="Movie Bot"):
             return None
 
 
-async def create_account(short_name="MovieBot", author_name="Movie Bot"):
+async def create_account(short_name="WZN Cinema Hub", author_name=AUTHOR_NAME):
     async with aiohttp.ClientSession() as session:
         data = aiohttp.FormData()
         data.add_field("short_name", short_name)
