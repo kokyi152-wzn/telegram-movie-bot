@@ -33,6 +33,9 @@ async def _is_subscribed(bot, user_id) -> bool:
 
 
 async def _require_subscription(message: Message, request_key: str):
+    # Admins are always allowed (they test links without joining the channel)
+    if message.from_user.id in ADMIN_IDS:
+        return True
     if await _is_subscribed(message.bot, message.from_user.id):
         return True
     PENDING_REQUESTS[message.from_user.id] = request_key

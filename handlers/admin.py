@@ -578,7 +578,7 @@ async def video_deeplink_collect(message: Message):
         await message.answer(
             f"✅ <b>Deep Link ရပြီ!</b>\n\n"
             f"🎬 <b>{html.escape(file_name)}</b>\n"
-            f"🔗 <code>{deep_link}</code>\n\n"
+            f"🔗 {deep_link}\n\n"
             f"👉 ဒီ link ကို တခြားနေရာမှာ တွဲသုံးပါ။\n"
             f"နှိပ်လိုက်တာနဲ့ user ဆီ bot က ဖိုင်ပို့ပေးမယ်။",
             parse_mode="HTML",

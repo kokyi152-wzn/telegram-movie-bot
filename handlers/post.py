@@ -429,30 +429,37 @@ async def confirm_post(callback: CallbackQuery):
     )
 
     try:
-        await _send_post_to_channel(callback.bot, title, state["poster_file_ids"], telegraph_url, deep_link, script_text)
-        await callback.message.answer(
-            f"✅ <b>Post တင်ပြီးပါပြီ!</b>\n\n"
-            f"🎬 <b>{html.escape(title)}</b>\n\n"
-            f"🖼 ပုံ {len(state['poster_file_ids'])} ခု | "
-            f"📝 ဇာတ်ညွှန်း {len(script_text)} လုံး\n"
-            f"ချန်နယ် 2 ခုလုံးမှာ တင်ပြီးပါပြီ။\n\n"
-            f"သင့် private deep link ကို ရှေ့ message မှာ ပို့ပေးမည်။",
-            parse_mode="HTML",
-        )
-        # Dedicated private deep link message for the admin
-        deeplink_kb = InlineKeyboardBuilder()
-        deeplink_kb.button(text="🎬 ဇာတ်ကားရယူရန်", url=deep_link)
-        deeplink_kb.button(text="🏠 Admin Menu", callback_data="admin_menu")
-        deeplink_kb.adjust(1)
-        await callback.message.answer(
-            f"🔗 <b>သင့် Deep Link (သီးသန့်)</b>\n\n"
-            f"<code>{deep_link}</code>\n\n"
-            f"👉 ဤ link ကို ဘယ်နေရာမှာမဆို တွဲသုံးပါ —\n"
-            f"နှိပ်လိုက်တာနဲ့ user ဆီ bot က ဇာတ်ကား ပို့ပေးမယ်။\n"
-            f"သို့မဟုတ် အောက်ပါ ခလုတ်ကို နှိပ်ပါ:",
-            parse_mode="HTML",
-            reply_markup=deeplink_kb.as_markup(),
-        )
+        posted = await _send_post_to_channel(callback.bot, title, state["poster_file_ids"], telegraph_url, deep_link, script_text)
+        if not posted:
+            await callback.message.answer(
+                f"❌ <b>Channel တစ်ခုမှာမဆို ပို့၍မပါဘူး</b>\n\n"
+                f"CHANNEL_ID / CHANNEL2_ID မှန်ကန်ကြောင်းနဲ့ bot က channel ထဲ admin ဖြစ်ကြောင်း စစ်ပါ။",
+                parse_mode="HTML",
+            )
+        else:
+            ch_text = ", ".join(str(cid) for cid in posted)
+            await callback.message.answer(
+                f"✅ <b>Post တင်ပြီးပါပြီ!</b>\n\n"
+                f"🎬 <b>{html.escape(title)}</b>\n\n"
+                f"🖼 ပုံ {len(state['poster_file_ids'])} ခု | "
+                f"📝 ဇာတ်ညွှန်း {len(script_text)} လုံး\n"
+                f"တင်ပြီးသားချန်နယ်: {ch_text}",
+                parse_mode="HTML",
+            )
+            # Dedicated private deep link message for the admin
+            deeplink_kb = InlineKeyboardBuilder()
+            deeplink_kb.button(text="🎬 ဇာတ်ကားရယူရန်", url=deep_link)
+            deeplink_kb.button(text="🏠 Admin Menu", callback_data="admin_menu")
+            deeplink_kb.adjust(1)
+            await callback.message.answer(
+                f"🔗 <b>သင့် Deep Link (သီးသန့်)</b>\n\n"
+                f"{deep_link}\n\n"
+                f"👉 ဤ link ကို ဘယ်နေရာမှာမဆို တွဲသုံးပါ —\n"
+                f"နှိပ်လိုက်တာနဲ့ user ဆီ bot က ဇာတ်ကား ပို့ပေးမယ်။\n"
+                f"သို့မဟုတ် အောက်ပါ ခလုတ်ကို နှိပ်ပါ:",
+                parse_mode="HTML",
+                reply_markup=deeplink_kb.as_markup(),
+            )
     except Exception as e:
         logging.exception("Failed to send post to channel")
         await callback.message.answer(
@@ -495,10 +502,11 @@ async def _send_post_to_channel(bot: Bot, title, poster_file_ids, telegraph_url,
     caption = format_post_caption(title, script_summary=script_text) if title else ""
     kb = post_action_kb(None, telegraph_url, deep_link, CHANNEL_URL, CHANNEL2_URL)
 
-    all_ids = []
+    posted = []
     for cid in channel_ids:
         try:
-            all_ids += await _send_post_to_one_channel(bot, cid, poster_file_ids, caption, kb)
+            await _send_post_to_one_channel(bot, cid, poster_file_ids, caption, kb)
+            posted.append(cid)
         except Exception as e:
             logging.warning("Failed to post to channel %s: %s", cid, e)
-    return all_ids
+    return posted
