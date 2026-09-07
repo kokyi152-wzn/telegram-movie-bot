@@ -9,6 +9,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_IDS, CHANNEL_ID, CHANNEL2_ID, CHANNEL_URL, CHANNEL2_URL
 from database import db
 from utils import telegraph
+from utils.bot_utils import get_bot_username
 from utils.formatters import format_post_caption
 from keyboards.inline import post_action_kb, photo_prompt_kb
 
@@ -414,7 +415,8 @@ async def confirm_post(callback: CallbackQuery):
         ) or ""
 
     post_id = str(uuid.uuid4())[:8]
-    deep_link = f"https://t.me/{callback.bot.username}?start=movie_{post_id}"
+    bot_username = await get_bot_username(callback.bot)
+    deep_link = f"https://t.me/{bot_username}?start=movie_{post_id}"
 
     await db.save_post(
         post_id=post_id,

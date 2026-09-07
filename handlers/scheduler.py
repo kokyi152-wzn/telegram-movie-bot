@@ -5,6 +5,7 @@ import uuid
 from aiogram import Bot
 from database import db
 from handlers.post import _send_post_to_channel
+from utils.bot_utils import get_bot_username
 
 
 async def _build_and_send_post(bot: Bot, post_data):
@@ -28,7 +29,7 @@ async def _build_and_send_post(bot: Bot, post_data):
         movie_file_name=movie_file_name,
     )
 
-    deep_link = f"https://t.me/{bot.username}?start=movie_{post_id}"
+    deep_link = f"https://t.me/{await get_bot_username(bot)}?start=movie_{post_id}"
 
     await _send_post_to_channel(bot, title, poster_file_ids, telegraph_url, deep_link, script_text)
 

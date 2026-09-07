@@ -11,6 +11,7 @@ from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_IDS
 from database import db
 from keyboards.inline import main_menu_kb, admin_back_kb, delete_confirm_kb, schedule_confirm_kb, batch_list_kb, back_main_kb
+from utils.bot_utils import get_bot_username
 from utils.formatters import format_admin_stats, format_post_list, format_schedule_list
 
 router = Router()
@@ -82,7 +83,8 @@ async def resend_post(callback: CallbackQuery):
     from config import CHANNEL_ID
 
     post_id_str = str(uuid.uuid4())[:8]
-    deep_link = f"https://t.me/{callback.bot.username}?start=movie_{post_id_str}"
+    bot_username = await get_bot_username(callback.bot)
+    deep_link = f"https://t.me/{bot_username}?start=movie_{post_id_str}"
 
     await _send_post_to_channel(
         callback.bot,
@@ -266,7 +268,8 @@ async def batch_title_handler(message: Message):
     batch_id = str(uuid.uuid4())[:8]
     await db.save_batch(batch_id, state["title"], state["file_ids"], state["file_names"])
 
-    deep_link = f"https://t.me/{message.bot.username}?start=batch_{batch_id}"
+    bot_username = await get_bot_username(message.bot)
+    deep_link = f"https://t.me/{bot_username}?start=batch_{batch_id}"
     link_msg = f"✅ <b>Batch Link ရပြီ!</b>\n\n"
     link_msg += f"📦 <b>{html.escape(state['title'])}</b>\n"
     link_msg += f"📄 ဖိုင်: {len(state['file_ids'])} ခု\n\n"
@@ -565,8 +568,8 @@ async def video_deeplink_collect(message: Message):
             [file_id],
             [file_name],
         )
-        username = (message.bot.username if message.bot else None) or "YourBot"
-        deep_link = f"https://t.me/{username}?start=batch_{post_id}"
+        bot_username = await get_bot_username(message.bot)
+        deep_link = f"https://t.me/{bot_username}?start=batch_{post_id}"
         ADMIN_STATES.pop(message.from_user.id, None)
         link_kb = InlineKeyboardBuilder()
         link_kb.button(text="🎬 ဖိုင်ရယူရန် Link", url=deep_link)
