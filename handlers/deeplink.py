@@ -6,9 +6,11 @@ from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
 from aiogram.exceptions import TelegramBadRequest
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_IDS, DELETE_AFTER, CHANNEL_ID, CHANNEL_URL
 from database import db
 from utils.formatters import get_warning_text, get_deletion_warning_text
+from utils.bot_utils import get_bot_username
 from keyboards.inline import subscribe_kb
 
 router = Router()
@@ -79,7 +81,7 @@ async def _require_subscription(message: Message, request_key: str):
     return False
 
 
-async def _auto_delete(bot, chat_id, message_ids, title):
+async def _auto_delete(bot, chat_id, message_ids, title, deep_link=""):
     """Wait DELETE_AFTER seconds then delete all files and send warning."""
     await asyncio.sleep(DELETE_AFTER)
     for mid in message_ids:
@@ -88,10 +90,15 @@ async def _auto_delete(bot, chat_id, message_ids, title):
         except Exception as e:
             logging.warning("Failed to delete message %s: %s", mid, e)
     try:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="🎬 ဇာတ်ကားပြန်လည်ရယူရန်", url=deep_link)
+        kb.button(text="📢 Channel ဝင်ရန်", url=CHANNEL_URL)
+        kb.adjust(1)
         await bot.send_message(
             chat_id,
             get_deletion_warning_text(title),
             parse_mode="HTML",
+            reply_markup=kb.as_markup(),
         )
     except Exception as e:
         logging.warning("Failed to send deletion warning: %s", e)
@@ -196,7 +203,9 @@ async def _handle_movie_request(message: Message, post_id: str):
     sent_ids.append(info_msg.message_id)
 
     # 3) Auto-delete after DELETE_AFTER seconds
-    task = asyncio.create_task(_auto_delete(message.bot, message.chat.id, sent_ids, title))
+    bot_username = await get_bot_username(message.bot)
+    deep_link = f"https://t.me/{bot_username}?start=movie_{post_id}"
+    task = asyncio.create_task(_auto_delete(message.bot, message.chat.id, sent_ids, title, deep_link))
     DELETION_TASKS[message.chat.id] = task
 
 
@@ -260,7 +269,9 @@ async def _handle_batch_request(message: Message, batch_id: str):
         sent_ids.append(info_msg.message_id)
 
         # 3) Auto-delete after DELETE_AFTER seconds
-        task = asyncio.create_task(_auto_delete(message.bot, message.chat.id, sent_ids, title))
+        bot_username = await get_bot_username(message.bot)
+        deep_link = f"https://t.me/{bot_username}?start=batch_{batch_id}"
+        task = asyncio.create_task(_auto_delete(message.bot, message.chat.id, sent_ids, title, deep_link))
         DELETION_TASKS[message.chat.id] = task
 
 

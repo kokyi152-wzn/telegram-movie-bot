@@ -429,11 +429,13 @@ async def confirm_post(callback: CallbackQuery):
     )
 
     try:
-        posted = await _send_post_to_channel(callback.bot, title, state["poster_file_ids"], telegraph_url, deep_link, script_text)
+        posted, errors = await _send_post_to_channel(callback.bot, title, state["poster_file_ids"], telegraph_url, deep_link, script_text)
         if not posted:
+            err_text = "\n".join(f"• {cid}: {err}" for cid, err in errors.items())
             await callback.message.answer(
                 f"❌ <b>Channel တစ်ခုမှာမဆို ပို့၍မပါဘူး</b>\n\n"
-                f"CHANNEL_ID / CHANNEL2_ID မှန်ကန်ကြောင်းနဲ့ bot က channel ထဲ admin ဖြစ်ကြောင်း စစ်ပါ။",
+                f"{html.escape(err_text) if err_text else 'unknown error'}\n\n"
+                f"bot က channel ထဲ admin / Post permission ရှိကြောင်း စစ်ပါ။",
                 parse_mode="HTML",
             )
         else:
@@ -487,10 +489,13 @@ async def _send_post_to_one_channel(bot: Bot, chat_id, poster_file_ids, caption,
         group = await bot.send_media_group(chat_id, media)
         text_msg = await bot.send_message(chat_id, caption, parse_mode="HTML", reply_markup=kb)
         return [m.message_id for m in group] + [text_msg.message_id]
-    except Exception:
-        logging.exception("Photo send failed, falling back to text (chat=%s)", chat_id)
-        msg = await bot.send_message(chat_id, caption, parse_mode="HTML", reply_markup=kb)
-        return [msg.message_id]
+    except Exception as e:
+        logging.warning("Photo/album send failed (chat=%s), falling back to text: %s", chat_id, e)
+        try:
+            msg = await bot.send_message(chat_id, caption, parse_mode="HTML", reply_markup=kb)
+            return [msg.message_id]
+        except Exception:
+            raise e
 
 
 async def _send_post_to_channel(bot: Bot, title, poster_file_ids, telegraph_url, deep_link, script_text=""):
@@ -503,10 +508,12 @@ async def _send_post_to_channel(bot: Bot, title, poster_file_ids, telegraph_url,
     kb = post_action_kb(None, telegraph_url, deep_link, CHANNEL_URL, CHANNEL2_URL)
 
     posted = []
+    errors = {}
     for cid in channel_ids:
         try:
             await _send_post_to_one_channel(bot, cid, poster_file_ids, caption, kb)
             posted.append(cid)
         except Exception as e:
-            logging.warning("Failed to post to channel %s: %s", cid, e)
-    return posted
+            logging.exception("Failed to post to channel %s", cid)
+            errors[str(cid)] = str(e)
+    return posted, errors
