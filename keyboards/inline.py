@@ -20,7 +20,7 @@ def main_menu_kb() -> InlineKeyboardMarkup:
     return builder.as_markup()
 
 
-def post_action_kb(post_id, telegraph_url="", movie_deeplink="") -> InlineKeyboardMarkup:
+def post_action_kb(post_id, telegraph_url="", movie_deeplink="", channel_url="", channel2_url="") -> InlineKeyboardMarkup:
     builder = InlineKeyboardBuilder()
     if telegraph_url:
         builder.button(
@@ -32,6 +32,24 @@ def post_action_kb(post_id, telegraph_url="", movie_deeplink="") -> InlineKeyboa
             text="🎬 ဇာတ်ကားရယူရန်",
             url=movie_deeplink,
         )
+    if channel_url:
+        builder.button(
+            text="📢 Channel ဝင်ရန်",
+            url=channel_url,
+        )
+    if channel2_url:
+        builder.button(
+            text="📢 Channel 2 ဝင်ရန်",
+            url=channel2_url,
+        )
+    builder.adjust(1)
+    return builder.as_markup()
+
+
+def photo_prompt_kb() -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    builder.button(text="✅ ပုံများ ပြီးပါပြီ → ဇာတ်ညွှန်း ပို့မည်", callback_data="photos_done")
+    builder.button(text="❌ ပယ်ဖျက်မည်", callback_data="cancel_post")
     builder.adjust(1)
     return builder.as_markup()
 

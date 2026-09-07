@@ -3,10 +3,8 @@ import logging
 import uuid
 
 from aiogram import Bot
-from config import CHANNEL_ID, BOT_TOKEN
 from database import db
-from utils.formatters import format_post_caption
-from keyboards.inline import post_action_kb
+from handlers.post import _send_post_to_channel
 
 
 async def _build_and_send_post(bot: Bot, post_data):
@@ -32,33 +30,7 @@ async def _build_and_send_post(bot: Bot, post_data):
 
     deep_link = f"https://t.me/{bot.username}?start=movie_{post_id}"
 
-    caption = format_post_caption(title, script_summary=script_text)
-    kb = post_action_kb(None, telegraph_url, deep_link)
-
-    from aiogram.types import InputMediaPhoto
-    try:
-        if len(poster_file_ids) == 1:
-            await bot.send_photo(
-                CHANNEL_ID,
-                photo=poster_file_ids[0],
-                caption=caption,
-                parse_mode="HTML",
-                reply_markup=kb,
-            )
-        elif len(poster_file_ids) > 1:
-            media = []
-            for i, fid in enumerate(poster_file_ids):
-                if i == 0:
-                    media.append(InputMediaPhoto(media=fid, caption=caption, parse_mode="HTML"))
-                else:
-                    media.append(InputMediaPhoto(media=fid))
-            await bot.send_media_group(CHANNEL_ID, media)
-            await bot.send_message(CHANNEL_ID, caption, parse_mode="HTML", reply_markup=kb)
-        else:
-            await bot.send_message(CHANNEL_ID, caption, parse_mode="HTML", reply_markup=kb)
-    except Exception as e:
-        logging.exception("Failed to send scheduled post: %s", title)
-        raise
+    await _send_post_to_channel(bot, title, poster_file_ids, telegraph_url, deep_link, script_text)
 
     return deep_link
 

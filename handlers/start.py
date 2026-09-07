@@ -37,8 +37,11 @@ async def help_handler(message: Message):
 
 @router.message(Command("cancel"))
 async def cancel_command(message: Message):
-    from handlers.post import POST_STATES
+    from handlers.post import POST_STATES, PHOTO_TASKS
     from handlers.admin import ADMIN_STATES
+    task = PHOTO_TASKS.pop(message.from_user.id, None)
+    if task and not task.done():
+        task.cancel()
     POST_STATES.pop(message.from_user.id, None)
     ADMIN_STATES.pop(message.from_user.id, None)
     await message.answer(
@@ -67,11 +70,35 @@ async def cancel_post(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("❌ Admin only!", show_alert=True)
         return
-    from handlers.post import POST_STATES
+    from handlers.post import POST_STATES, PHOTO_TASKS
+    task = PHOTO_TASKS.pop(callback.from_user.id, None)
+    if task and not task.done():
+        task.cancel()
     POST_STATES.pop(callback.from_user.id, None)
-    await callback.message.edit_text(
-        "❌ ပယ်ဖျက်ပြီးပါပြီ။",
-        parse_mode="HTML",
-        reply_markup=main_menu_kb(),
-    )
+    await _replace_with_menu(callback)
     await callback.answer("❌ ပယ်ဖျက်ပြီး")
+
+
+async def _replace_with_menu(callback: CallbackQuery):
+    """Edit the message to the admin menu (handles photo with caption)."""
+    text = "🏠 <b>Admin Menu</b>\n\nအောက်ပါခလုတ်များကို နှိပ်ပါ။"
+    from aiogram.exceptions import TelegramBadRequest
+    try:
+        await callback.message.edit_text(
+            text,
+            parse_mode="HTML",
+            reply_markup=main_menu_kb(),
+        )
+    except TelegramBadRequest:
+        try:
+            await callback.message.edit_caption(
+                caption=text,
+                parse_mode="HTML",
+                reply_markup=main_menu_kb(),
+            )
+        except TelegramBadRequest:
+            await callback.message.answer(
+                text,
+                parse_mode="HTML",
+                reply_markup=main_menu_kb(),
+            )
