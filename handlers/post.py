@@ -57,7 +57,7 @@ def _new_state(admin_id):
 
 @router.message(lambda msg: msg.from_user and msg.from_user.id in ADMIN_IDS and msg.text == "/post")
 async def start_post(message: Message):
-    _start_new_post(message)
+    await _start_new_post(message)
 
 
 @router.callback_query(F.data == "new_post")
@@ -65,30 +65,38 @@ async def new_post_callback(callback: CallbackQuery):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("❌ Admin only!", show_alert=True)
         return
-    _start_new_post(callback)
+    await _start_new_post(callback)
     await callback.answer("🎬 ပိုစ်အသစ်")
 
 
-def _start_new_post(event):
+async def _start_new_post(event):
     state = _new_state(event.from_user.id)
     state["state"] = STATE_COLLECT_MEDIA
     POST_STATES[event.from_user.id] = state
     if isinstance(event, CallbackQuery):
-        msg = event.message
-        send = msg.answer
+        await event.message.answer(
+            "🎬 <b>ပိုစ်အသစ် တည်ဆောက်ရန်</b>\n\n"
+            "1️⃣ <b>ပုံများ</b> ပို့ပါ (တစ်ပုံချင်း သို့မဟုတ် အများအပြား)\n"
+            "2️⃣ <b>ဇာတ်ညွှန်း</b> ပို့ပါ\n"
+            "3️⃣ <b>Movie ဖိုင်</b> ပို့ပါ\n\n"
+            "ပုံပြီးရင် ဇာတ်ညွှန်း ပို့လို့ရပြီ။\n"
+            "Movie ဖိုင် ပို့ပြီးရင် post ပြီးပါပြီ။\n\n"
+            "❌ ပယ်ဖျက်ရန်: <b>/cancel</b>",
+            parse_mode="HTML",
+            reply_markup=cancel_kb(),
+        )
     else:
-        send = event.answer
-    asyncio.create_task(send(
-        "🎬 <b>ပိုစ်အသစ် တည်ဆောက်ရန်</b>\n\n"
-        "1️⃣ <b>ပုံများ</b> ပို့ပါ (တစ်ပုံချင်း သို့မဟုတ် အများအပြား)\n"
-        "2️⃣ <b>ဇာတ်ညွှန်း</b> ပို့ပါ\n"
-        "3️⃣ <b>Movie ဖိုင်</b> ပို့ပါ\n\n"
-        "ပုံပြီးရင် ဇာတ်ညွှန်း ပို့လို့ရပြီ။\n"
-        "Movie ဖိုင် ပို့ပြီးရင် post ပြီးပါပြီ။\n\n"
-        "❌ ပယ်ဖျက်ရန်: <b>/cancel</b>",
-        parse_mode="HTML",
-        reply_markup=cancel_kb(),
-    ))
+        await event.answer(
+            "🎬 <b>ပိုစ်အသစ် တည်ဆောက်ရန်</b>\n\n"
+            "1️⃣ <b>ပုံများ</b> ပို့ပါ (တစ်ပုံချင်း သို့မဟုတ် အများအပြား)\n"
+            "2️⃣ <b>ဇာတ်ညွှန်း</b> ပို့ပါ\n"
+            "3️⃣ <b>Movie ဖိုင်</b> ပို့ပါ\n\n"
+            "ပုံပြီးရင် ဇာတ်ညွှန်း ပို့လို့ရပြီ။\n"
+            "Movie ဖိုင် ပို့ပြီးရင် post ပြီးပါပြီ။\n\n"
+            "❌ ပယ်ဖျက်ရန်: <b>/cancel</b>",
+            parse_mode="HTML",
+            reply_markup=cancel_kb(),
+        )
 
 
 @router.message(F.photo | F.document | F.video, lambda msg: msg.from_user and msg.from_user.id in POST_STATES)
