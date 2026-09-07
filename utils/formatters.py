@@ -3,18 +3,25 @@ from datetime import datetime
 
 
 def format_post_caption(title, script_summary="", genres="", year="", rating=""):
-    text = f"🎬 <b>{html.escape(title)}</b>\n\n"
+    title_line = f"🎬 <b>{html.escape(title)}</b>"
+
+    meta = []
     if year:
-        text += f"📅 <b>နှစ်:</b> {year}\n"
+        meta.append(f"📅 <b>နှစ်:</b> {year}")
     if genres:
-        text += f"🎭 <b>အမျိုးအစား:</b> {genres}\n"
+        meta.append(f"🎭 <b>အမျိုးအစား:</b> {genres}")
     if rating:
-        text += f"⭐ <b>အဆင့်:</b> {rating}\n"
+        meta.append(f"⭐ <b>အဆင့်:</b> {rating}")
+
+    sections = ["📝 <b>ဇာတ်ကားအကြောင်း</b>", title_line]
+    if meta:
+        sections.append("\n".join(meta))
     if script_summary:
-        text += f"\n📝 <b>ဇာတ်ညွှန်းအကျဉ်းချုပ်:</b>\n{html.escape(script_summary[:500])}"
+        summary = html.escape(script_summary[:500])
         if len(script_summary) > 500:
-            text += "..."
-    return text
+            summary += "..."
+        sections.append(summary)
+    return "\n\n".join(sections)
 
 
 def get_warning_text():
