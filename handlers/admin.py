@@ -533,59 +533,86 @@ async def video_deeplink_prompt(callback: CallbackQuery):
     await callback.answer("🎬 Video → Deep Link")
 
 
+def _raw_file_name(message: Message):
+    """Return (file_id, original_file_name) of a file message, ignoring captions."""
+    if message.video:
+        return message.video.file_id, getattr(message.video, "file_name", None) or "video.mp4"
+    if message.document:
+        return message.document.file_id, message.document.file_name or "document"
+    if message.photo:
+        return message.photo[-1].file_id, "photo.jpg"
+    return None, ""
+
+
+async def _publish_deeplink(message: Message, file_id: str, file_name: str):
+    """Save the file as a single-file batch and send the deep link to the admin."""
+    await message.answer("⏳ <b>Deep Link ထုတ်နေသည်...</b>", parse_mode="HTML")
+    post_id = str(uuid.uuid4())[:8]
+    await db.save_batch(
+        post_id,
+        file_name,
+        [file_id],
+        [file_name],
+    )
+    bot_username = await get_bot_username(message.bot)
+    deep_link = f"https://t.me/{bot_username}?start=batch_{post_id}"
+    link_kb = InlineKeyboardBuilder()
+    link_kb.button(text="🎬 ဖိုင်ရယူရန် Link", url=deep_link)
+    link_kb.button(text="🏠 Admin Menu", callback_data="admin_menu")
+    link_kb.adjust(1)
+    await message.answer(
+        f"✅ <b>Deep Link ရပြီ!</b>\n\n"
+        f"🎬 <b>{html.escape(file_name)}</b>\n"
+        f"🔗 {deep_link}\n\n"
+        f"👉 ဒီ link ကို တခြားနေရာမှာ တွဲသုံးပါ။\n"
+        f"နှိပ်လိုက်တာနဲ့ user ဆီ bot က ဖိုင်ပို့ပေးမယ်။",
+        parse_mode="HTML",
+        reply_markup=link_kb.as_markup(),
+    )
+
+
 @router.message(F.video | F.document, lambda m: m.from_user and ADMIN_STATES.get(m.from_user.id, {}).get("state") == STATE_VIDEO_LINK)
 async def video_deeplink_collect(message: Message):
     state = ADMIN_STATES.get(message.from_user.id)
     if not state or state["state"] != STATE_VIDEO_LINK:
-        await message.answer(
-            "⚠️ ဦးစွာ <b>/deeplink</b> (သို့) Menu ထဲက "
-            "🔗 Video → Deep Link ကို နှိပ်ပါ။",
-            parse_mode="HTML",
-            reply_markup=main_menu_kb(),
-        )
         return
 
-    file_id = None
-    file_name = ""
-    if message.video:
-        file_id = message.video.file_id
-        file_name = getattr(message.video, "file_name", None) or "video.mp4"
-    elif message.document:
-        file_id = message.document.file_id
-        file_name = message.document.file_name or "document"
-
+    file_id, file_name = _raw_file_name(message)
     if not file_id:
         return
 
-    is_movie_ext = file_name.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".3gp", ".mpeg"))
-
+    ADMIN_STATES.pop(message.from_user.id, None)
     try:
-        await message.answer("⏳ <b>Deep Link ထုတ်နေသည်...</b>", parse_mode="HTML")
-        post_id = str(uuid.uuid4())[:8]
-        await db.save_batch(
-            post_id,
-            file_name,
-            [file_id],
-            [file_name],
-        )
-        bot_username = await get_bot_username(message.bot)
-        deep_link = f"https://t.me/{bot_username}?start=batch_{post_id}"
-        ADMIN_STATES.pop(message.from_user.id, None)
-        link_kb = InlineKeyboardBuilder()
-        link_kb.button(text="🎬 ဖိုင်ရယူရန် Link", url=deep_link)
-        link_kb.button(text="🏠 Admin Menu", callback_data="admin_menu")
-        link_kb.adjust(1)
-        await message.answer(
-            f"✅ <b>Deep Link ရပြီ!</b>\n\n"
-            f"🎬 <b>{html.escape(file_name)}</b>\n"
-            f"🔗 {deep_link}\n\n"
-            f"👉 ဒီ link ကို တခြားနေရာမှာ တွဲသုံးပါ။\n"
-            f"နှိပ်လိုက်တာနဲ့ user ဆီ bot က ဖိုင်ပို့ပေးမယ်။",
-            parse_mode="HTML",
-            reply_markup=link_kb.as_markup(),
-        )
+        await _publish_deeplink(message, file_id, file_name)
     except Exception as e:
         logging.exception("Video deeplink failed")
+        await message.answer(
+            f"❌ <b>Deep Link ထုတ်ရန် မအောင်မြင်ပါ:</b>\n{html.escape(str(e))}\n\n"
+            "MONGODB_URI မှန်ကန်ကြောင်း စစ်ပါ။",
+            parse_mode="HTML",
+            reply_markup=back_main_kb(),
+        )
+
+
+# Any file the admin sends (no command, no active flow) -> auto deep link
+@router.message(F.video | F.document | F.photo, lambda m: m.from_user and m.from_user.id in ADMIN_IDS)
+async def admin_auto_deeplink(message: Message):
+    active = ADMIN_STATES.get(message.from_user.id)
+    if active and active.get("state") not in (None, STATE_IDLE):
+        await message.answer(
+            "⏳ လက်ရှိ လုပ်ဆောင်နေမှု ရှိနေပါသည်။ <b>/cancel</b> ဖြင့် ပယ်ဖျက်ပါ။",
+            parse_mode="HTML",
+        )
+        return
+
+    file_id, file_name = _raw_file_name(message)
+    if not file_id:
+        return
+
+    try:
+        await _publish_deeplink(message, file_id, file_name)
+    except Exception as e:
+        logging.exception("Auto deeplink failed")
         await message.answer(
             f"❌ <b>Deep Link ထုတ်ရန် မအောင်မြင်ပါ:</b>\n{html.escape(str(e))}\n\n"
             "MONGODB_URI မှန်ကန်ကြောင်း စစ်ပါ။",
