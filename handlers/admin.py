@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from aiogram import Router, F
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from config import ADMIN_IDS
@@ -492,26 +493,40 @@ async def maintenance_off(callback: CallbackQuery):
 
 # ---------------- Video -> Deep Link ----------------
 
-@router.callback_query(F.data == "video_deeplink")
-async def video_deeplink_prompt(callback: CallbackQuery):
-    if callback.from_user.id not in ADMIN_IDS:
-        await callback.answer("❌ Admin only!", show_alert=True)
-        return
-    state = {
-        "admin_id": callback.from_user.id,
+def _video_link_state(admin_id):
+    return {
+        "admin_id": admin_id,
         "state": STATE_VIDEO_LINK,
         "file_ids": [],
         "title": None,
         "is_batch": False,
     }
-    ADMIN_STATES[callback.from_user.id] = state
-    await callback.message.answer(
+
+
+def _deeplink_prompt_text():
+    return (
         "🎬 <b>Video → Deep Link</b>\n\n"
         "ဇာတ်ကားဖိုင် (သို့) ဗီဒီယိုကို ပို့ပါ။\n"
         "ရပြီဆိုရင် deep link ထုတ်ပေးပါမယ်။\n\n"
-        "ပယ်ဖျက်ရန်: <b>/cancel</b>",
-        parse_mode="HTML",
+        "ပယ်ဖျက်ရန်: <b>/cancel</b>"
     )
+
+
+@router.message(Command("deeplink"))
+async def deeplink_command(message: Message):
+    if message.from_user.id not in ADMIN_IDS:
+        return
+    ADMIN_STATES[message.from_user.id] = _video_link_state(message.from_user.id)
+    await message.answer(_deeplink_prompt_text(), parse_mode="HTML")
+
+
+@router.callback_query(F.data == "video_deeplink")
+async def video_deeplink_prompt(callback: CallbackQuery):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Admin only!", show_alert=True)
+        return
+    ADMIN_STATES[callback.from_user.id] = _video_link_state(callback.from_user.id)
+    await callback.message.answer(_deeplink_prompt_text(), parse_mode="HTML")
     await callback.answer("🎬 Video → Deep Link")
 
 
@@ -519,6 +534,12 @@ async def video_deeplink_prompt(callback: CallbackQuery):
 async def video_deeplink_collect(message: Message):
     state = ADMIN_STATES.get(message.from_user.id)
     if not state or state["state"] != STATE_VIDEO_LINK:
+        await message.answer(
+            "⚠️ ဦးစွာ <b>/deeplink</b> (သို့) Menu ထဲက "
+            "🔗 Video → Deep Link ကို နှိပ်ပါ။",
+            parse_mode="HTML",
+            reply_markup=main_menu_kb(),
+        )
         return
 
     file_id = None
@@ -535,9 +556,8 @@ async def video_deeplink_collect(message: Message):
 
     is_movie_ext = file_name.lower().endswith((".mp4", ".mkv", ".avi", ".mov", ".webm", ".m4v", ".3gp", ".mpeg"))
 
-    # If it's a single video/movie -> generate deeplink immediately
-    if not state.get("is_batch"):
-        # store as a one-file batch for deeplink reuse
+    try:
+        await message.answer("⏳ <b>Deep Link ထုတ်နေသည်...</b>", parse_mode="HTML")
         post_id = str(uuid.uuid4())[:8]
         await db.save_batch(
             post_id,
@@ -545,7 +565,8 @@ async def video_deeplink_collect(message: Message):
             [file_id],
             [file_name],
         )
-        deep_link = f"https://t.me/{message.bot.username}?start=batch_{post_id}"
+        username = (message.bot.username if message.bot else None) or "YourBot"
+        deep_link = f"https://t.me/{username}?start=batch_{post_id}"
         ADMIN_STATES.pop(message.from_user.id, None)
         link_kb = InlineKeyboardBuilder()
         link_kb.button(text="🎬 ဖိုင်ရယူရန် Link", url=deep_link)
@@ -553,14 +574,32 @@ async def video_deeplink_collect(message: Message):
         link_kb.adjust(1)
         await message.answer(
             f"✅ <b>Deep Link ရပြီ!</b>\n\n"
-            f"🎬 <b>{html.escape(file_name)}</b>\n\n"
+            f"🎬 <b>{html.escape(file_name)}</b>\n"
+            f"🔗 <code>{deep_link}</code>\n\n"
             f"👉 ဒီ link ကို တခြားနေရာမှာ တွဲသုံးပါ။\n"
             f"နှိပ်လိုက်တာနဲ့ user ဆီ bot က ဖိုင်ပို့ပေးမယ်။",
             parse_mode="HTML",
             reply_markup=link_kb.as_markup(),
         )
-        return
+    except Exception as e:
+        logging.exception("Video deeplink failed")
+        await message.answer(
+            f"❌ <b>Deep Link ထုတ်ရန် မအောင်မြင်ပါ:</b>\n{html.escape(str(e))}\n\n"
+            "MONGODB_URI မှန်ကန်ကြောင်း စစ်ပါ။",
+            parse_mode="HTML",
+            reply_markup=back_main_kb(),
+        )
 
-    # batch collection path (shouldn't normally reach here for video_deeplink)
-    state["file_ids"].append(file_id)
-    await message.answer(f"✅ ဖိုင် {len(state['file_ids'])} ခု ရပြီ။ /done ရိုက်ပါ")
+
+# ---------------- Admin fallback (never hidden) ----------------
+# Registered LAST so any admin message not consumed by a flow above
+# still gets a reply with the menu.
+
+@router.message(lambda m: m.from_user and m.from_user.id in ADMIN_IDS)
+async def admin_fallback(message: Message):
+    await message.answer(
+        "🤖 <b>Admin Command မရှိပါ။</b>\n\n"
+        "ရလိုသော လုပ်ဆောင်ချက်ကို Menu မှ ရွေးပါ:",
+        parse_mode="HTML",
+        reply_markup=main_menu_kb(),
+    )
