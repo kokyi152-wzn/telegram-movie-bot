@@ -99,3 +99,12 @@ def maintenance_kb() -> InlineKeyboardMarkup:
     builder.button(text="🏠 Admin Menu", callback_data="admin_menu")
     builder.adjust(1)
     return builder.as_markup()
+
+
+def subscribe_kb(channel_url="") -> InlineKeyboardMarkup:
+    builder = InlineKeyboardBuilder()
+    if channel_url:
+        builder.button(text="📢 Channel ဝင်ရန်", url=channel_url)
+    builder.button(text="✅ ဝင်ပြီးပါပြီ", callback_data="after_subscribe")
+    builder.adjust(1)
+    return builder.as_markup()

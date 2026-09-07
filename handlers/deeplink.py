@@ -4,14 +4,46 @@ import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery
 from aiogram.filters import CommandStart
-from config import ADMIN_IDS, DELETE_AFTER, CHANNEL_ID
+from aiogram.exceptions import TelegramBadRequest
+from config import ADMIN_IDS, DELETE_AFTER, CHANNEL_ID, CHANNEL_URL
 from database import db
 from utils.formatters import get_warning_text, get_deletion_warning_text
+from keyboards.inline import subscribe_kb
 
 router = Router()
 
 # Track pending deletions by message to avoid duplicates and let users manage
 DELETION_TASKS = {}
+
+# Track pending requests waiting for channel subscription
+PENDING_REQUESTS = {}
+
+
+async def _is_subscribed(bot, user_id) -> bool:
+    if not CHANNEL_ID:
+        return True
+    try:
+        member = await bot.get_chat_member(CHANNEL_ID, user_id)
+        return member.status in ("member", "administrator", "creator")
+    except TelegramBadRequest:
+        return False
+    except Exception as e:
+        logging.warning("Channel check failed for %s: %s", user_id, e)
+        return False
+
+
+async def _require_subscription(message: Message, request_key: str):
+    if await _is_subscribed(message.bot, message.from_user.id):
+        return True
+    PENDING_REQUESTS[message.from_user.id] = request_key
+    await message.answer(
+        "⚠️ <b>Channel ထဲ ဝင်ထားမှသာ ဇာတ်ကားရယူလို့ရပါမည်!</b>\n\n"
+        "📢 အောက်ပါ Channel ကို ဝင်ပြီး\n"
+        "\"✅ ဝင်ပြီးပါပြီ\" ခလုတ်ကို နှိပ်ပါ:",
+        parse_mode="HTML",
+        reply_markup=subscribe_kb(CHANNEL_URL),
+    )
+    return False
 
 
 async def _auto_delete(bot, chat_id, message_ids, title):
@@ -82,6 +114,9 @@ async def start_with_deep_link(message: Message):
 
 
 async def _handle_movie_request(message: Message, post_id: str):
+    if not await _require_subscription(message, f"movie_{post_id}"):
+        return
+
     post = await db.get_post(post_id)
     if not post:
         await message.answer(
@@ -151,6 +186,9 @@ async def _handle_movie_request(message: Message, post_id: str):
 
 
 async def _handle_batch_request(message: Message, batch_id: str):
+    if not await _require_subscription(message, f"batch_{batch_id}"):
+        return
+
     batch = await db.get_batch(batch_id)
     if not batch:
         await message.answer(
@@ -212,3 +250,27 @@ async def _handle_batch_request(message: Message, batch_id: str):
         f"🔄 သိမ်းရန်: ဤဖိုင်ခဲ့အား <b>Saved Messages</b> သို့ Forward လုပ်ပါ။",
         parse_mode="HTML",
     )
+
+
+@router.callback_query(F.data == "after_subscribe")
+async def after_subscribe(callback: CallbackQuery):
+    pending_key = PENDING_REQUESTS.pop(callback.from_user.id, None)
+    if not pending_key:
+        await callback.answer("✅ Channel ဝင်ပြီးဖြစ်ပါတယ်!")
+        return
+
+    request_type = None
+    request_id = ""
+    if pending_key.startswith("movie_"):
+        request_type = "movie"
+        request_id = pending_key.replace("movie_", "")
+    elif pending_key.startswith("batch_"):
+        request_type = "batch"
+        request_id = pending_key.replace("batch_", "")
+
+    if request_type == "movie":
+        await _handle_movie_request(callback.message, request_id)
+    elif request_type == "batch":
+        await _handle_batch_request(callback.message, request_id)
+    else:
+        await callback.answer("❌ မေးခွန်းမှားနေသည်!")
