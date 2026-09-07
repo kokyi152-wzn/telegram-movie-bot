@@ -174,14 +174,7 @@ async def _handle_movie_request(message: Message, post_id: str):
 
     sent_ids = []
 
-    # Send warning first
-    warning_msg = await message.answer(
-        get_warning_text(),
-        parse_mode="HTML",
-    )
-    sent_ids.append(warning_msg.message_id)
-
-    # Send the movie file
+    # 1) Send the movie file FIRST
     try:
         file_msg = await _send_media_file(
             message,
@@ -196,21 +189,15 @@ async def _handle_movie_request(message: Message, post_id: str):
             f"❌ Movie ဖိုင် ပို့ရန် မအောင်မြင်ပါ:\n{html.escape(str(e))}",
             parse_mode="HTML",
         )
-        try:
-            await message.bot.delete_message(message.chat.id, warning_msg.message_id)
-        except Exception:
-            pass
         return
 
-    # Schedule auto-delete (5 min)
+    # 2) THEN the info / warning notice
+    info_msg = await message.answer(get_warning_text(), parse_mode="HTML")
+    sent_ids.append(info_msg.message_id)
+
+    # 3) Auto-delete after DELETE_AFTER seconds
     task = asyncio.create_task(_auto_delete(message.bot, message.chat.id, sent_ids, title))
     DELETION_TASKS[message.chat.id] = task
-
-    await message.answer(
-        f"⏳ <b>ဤဇာတ်ကားဖိုင်ကို {DELETE_AFTER // 60} မိနစ်အကြာတွင် အလိုအလျောက် ဖျက်ပါမည်။</b>\n\n"
-        f"🔄 သိမ်းရန်: ဤဖိုင်ခဲ့အား <b>Saved Messages</b> သို့ Forward လုပ်ပါ။",
-        parse_mode="HTML",
-    )
 
 
 async def _handle_batch_request(message: Message, batch_id: str):
@@ -244,9 +231,8 @@ async def _handle_batch_request(message: Message, batch_id: str):
     )
 
     sent_ids = []
-    warning_msg = await message.answer(get_warning_text(), parse_mode="HTML")
-    sent_ids.append(warning_msg.message_id)
 
+    # 1) Send all files FIRST
     for i, fid in enumerate(file_ids):
         try:
             name = file_names[i] if i < len(file_names) else "file"
@@ -268,14 +254,14 @@ async def _handle_batch_request(message: Message, batch_id: str):
             except Exception:
                 pass
 
-    task = asyncio.create_task(_auto_delete(message.bot, message.chat.id, sent_ids, title))
-    DELETION_TASKS[message.chat.id] = task
+    # 2) THEN the info / warning notice
+    if sent_ids:
+        info_msg = await message.answer(get_warning_text(), parse_mode="HTML")
+        sent_ids.append(info_msg.message_id)
 
-    await message.answer(
-        f"⏳ <b>ဤဖိုင်များကို {DELETE_AFTER // 60} မိနစ်အကြာတွင် အလိုအလျောက် ဖျက်ပါမည်။</b>\n\n"
-        f"🔄 သိမ်းရန်: ဤဖိုင်ခဲ့အား <b>Saved Messages</b> သို့ Forward လုပ်ပါ။",
-        parse_mode="HTML",
-    )
+        # 3) Auto-delete after DELETE_AFTER seconds
+        task = asyncio.create_task(_auto_delete(message.bot, message.chat.id, sent_ids, title))
+        DELETION_TASKS[message.chat.id] = task
 
 
 @router.callback_query(F.data == "after_subscribe")
