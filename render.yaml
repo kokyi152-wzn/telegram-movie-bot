@@ -1,0 +1,27 @@
+services:
+  - type: worker
+    name: telegram-movie-bot
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: "pip install -r requirements.txt"
+    startCommand: "python bot.py"
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: MONGODB_URI
+        sync: false
+      - key: DB_NAME
+        value: movie_bot
+      - key: ADMIN_IDS
+        sync: false
+      - key: CHANNEL_ID
+        sync: false
+      - key: PRIVATE_CHANNEL_ID
+        sync: false
+      - key: DELETE_AFTER
+        value: "300"
+      - key: TELEGRAPH_TOKEN
+        sync: false
+      - key: MAINTENANCE_MODE
+        value: "false"
