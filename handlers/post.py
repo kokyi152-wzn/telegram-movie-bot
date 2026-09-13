@@ -11,6 +11,7 @@ from database import db
 from utils import telegraph
 from utils.bot_utils import get_bot_username
 from utils.formatters import format_post_caption
+from utils.translate import translate_to_burmese
 from keyboards.inline import post_action_kb, photo_prompt_kb
 
 router = Router()
@@ -210,7 +211,8 @@ async def collect_script(message: Message):
         return
 
     if state["state"] == STATE_COLLECT_SCRIPT:
-        state["script_parts"].append(text)
+        translated = await translate_to_burmese(text)
+        state["script_parts"].append(translated)
         total_len = sum(len(p) for p in state["script_parts"])
         await message.answer(
             f"✅ <b>ဇာတ်ညွှန်း အပိုင်း {len(state['script_parts'])} လက်ခံရရှိပြီ</b> "
@@ -300,7 +302,7 @@ async def collect_movie(message: Message):
         caption = (message.caption or "").strip()
         raw_title = _clean_movie_title(caption) if caption else _clean_movie_title(file_name)
         state["movie_caption"] = caption
-        state["movie_title"] = raw_title if raw_title else (caption or file_name)
+        state["movie_title"] = (await translate_to_burmese(raw_title)) if raw_title else (caption or file_name)
 
         # Ensure script phase finalized
         if state["state"] != STATE_COLLECT_MOVIE:
