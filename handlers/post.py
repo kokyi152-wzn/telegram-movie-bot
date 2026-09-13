@@ -35,7 +35,9 @@ def _new_state(admin_id):
         "movie_file_id": None,
         "movie_title": None,
         "movie_caption": "",
+        "movie_caption_my": "",
         "movie_file_name": "",
+        "photo_captions": [],
         "script_parts": [],
         "telegraph_url": "",
         "state": STATE_IDLE,
@@ -118,6 +120,11 @@ async def collect_photo(message: Message):
         return
 
     state["poster_file_ids"].append(message.photo[-1].file_id)
+
+    caption = (message.caption or "").strip()
+    if caption:
+        caption = await translate_to_burmese(caption)
+    state["photo_captions"].append(caption)
 
     # Restart the quiet-timer: each new photo updates the count after a pause
     task = PHOTO_TASKS.get(admin_id)
@@ -302,6 +309,7 @@ async def collect_movie(message: Message):
         caption = (message.caption or "").strip()
         raw_title = _clean_movie_title(caption) if caption else _clean_movie_title(file_name)
         state["movie_caption"] = caption
+        state["movie_caption_my"] = (await translate_to_burmese(caption)) if caption else ""
         state["movie_title"] = (await translate_to_burmese(raw_title)) if raw_title else (caption or file_name)
 
         # Ensure script phase finalized
@@ -407,7 +415,18 @@ async def confirm_post(callback: CallbackQuery):
         task.cancel()
 
     title = state.get("movie_title") or "Movie"
-    script_text = "\n\n".join(state["script_parts"]) if state["script_parts"] else ""
+    if state["script_parts"]:
+        script_text = "\n\n".join(state["script_parts"])
+    else:
+        parts = []
+        video_cap = (state.get("movie_caption_my") or "").strip()
+        if video_cap:
+            parts.append(video_cap)
+        for cap in state.get("photo_captions") or []:
+            cap = (cap or "").strip()
+            if cap and cap not in parts:
+                parts.append(cap)
+        script_text = "\n\n".join(parts)
     telegraph_url = state.get("telegraph_url", "")
 
     # If script exists but no telegraph url built yet, build now
